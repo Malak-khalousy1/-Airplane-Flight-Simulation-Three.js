@@ -1,0 +1,265 @@
+import Vector3 from "././vec" //"./world/physics";
+
+
+export default class Airplane {
+
+    constructor() {
+        this.pos = new Vector3(-28, -0.19, 0);
+        this.v = new Vector3();
+        this.m = 5000;
+        this.p = 1.25;
+        this.A = 10;
+        this.max_thrust = 1000000;
+        this.current_thrust = 1000;
+        this.pitch = 0;
+        this.roll = 0;
+        this.yaw = 0;
+
+        this.Apitch=1;
+        this.Ayaw=1;
+        this.Aroll=1;
+        
+        this.pitchAngle=0;
+        this.yawAngle=0;
+        this.rollAngle=0;
+        
+        this.clPitch=1;
+        this.clyaw=1;
+        this.clroll=1;
+        
+        this.cdyaw=0.2;
+        this.cdPitch=0.2;
+        this.cdroll=0.2 
+
+        this.armPitch=20;
+        this.armyaw=20;
+        this.armroll=20;
+
+        this.dt = 0.01;
+
+        this.pitchI=1000;
+        this.rollI=1000;
+        this.yawI=1000;
+
+        this.pitchOmega=1;
+        this.rollOmega=1;
+        this.yawOmega=1;
+
+    }
+
+    printForces() {
+        this.lift().print("lift");
+        this.thrust().print("thrust");
+        this.drag().print("drag");
+        this.weight().print("W");
+    }
+    printPosV() {
+        console.log("aoa " + this.aoa());
+        this.pos.print("position ");
+        this.v.print("Velocity");
+    }
+    update() {
+        console.log(" ptich " + this.pitch + " yaw " + this.yaw + " roll " + this.roll );
+        console.log("mass"+this.m);
+        this.printPosV();
+        this.printForces();
+        var a = new Vector3();
+        // a = f/m
+        var f = this.thrust().add(this.drag()).add(this.lift()).add(this.weight()).add(this.Lift2());
+        a = f.divide(this.m);
+        a.printvec();
+        if (this.pos.y < 0 && this.v.y < 0) {
+            this.pos.y = 0;
+            this.v.y = 0;
+        } 
+        var dv = a.multiply(this.dt);
+        this.v = this.v.add(dv);
+
+        var dpos = this.v.multiply(this.dt);
+        this.pos = this.pos.add(dpos);
+
+       this.updatePitch();
+        this.updateRoll();
+        this.updateYaw();
+    }
+    weight() {
+        //w=m*g
+        var weight = new Vector3();
+        var gravity = new Vector3(0, -9.8, 0);
+        weight = gravity.multiply(this.m);
+        return weight;
+    }
+
+    right() {
+        var f = new Vector3(0, 0, 1);
+        f = f.rotationX(this.roll);
+        f = f.rotationZ(this.pitch);
+        f = f.rotationY(this.yaw);
+        return f;
+    }
+
+    // todo
+    cl() {
+        var x = this.aoa() * 180 / 3.14;
+        // y = -6E-09x5 + 2E-06x4 - 0.0001x3 + 0.0004x2 + 0.1183x + 0.0154
+        //var y = 2e-06 * x * x * x * x - 0.0001 * x * x * x + 0.0004 * x * x + 0.1183 * x + 0.0154;
+       var y = 0.1 * x + 0.3;
+        return y;
+    }
+
+    lift() {
+        //L = 0.5 * p * v^2 * A * cl
+        //v2 = v^2
+        var v2 = this.v.dot(this.v);
+        var l = 0.5 * this.p * v2 * this.A * this.cl();
+        //console.log("cl " + this.cl());
+        var ll = this.right().cross(this.v);
+        var l_norm = ll.normalize();
+        return l_norm.multiply(l);
+    }
+
+    cl2(){
+        return this.v.angle(this.front());
+    }
+    Lift2() {
+
+        var v2 = this.v.dot(this.v);
+        var l = 0.5 * this.p * v2 * this.A * this.cl2();
+
+        var r =(this.v.cross(this.front())).cross(this.v).normalize();
+        return r.multiply(l);
+    }
+
+
+    aoa() {
+        var result = this.v.angle(this.front());
+        var Vcross = this.v.cross(this.front());
+        var theta = Vcross.angle(this.right());
+        if (theta < 90) {
+            return result;
+        }
+        return -result;
+    }
+
+    // todo
+    cd() {
+        var x = this.aoa() * 180 / 3.14;
+        //var y = this.aoa() * 0.1 + 0.1;
+        //y = 1E-09x6 + 4E-08x5 - 5E-07x4 - 2E-05x3 + 0.0004x2 + 0.0038x + 0.0107
+        //0.0004x2 + 0.0038x + 0.0107
+        // var y = 0.0004 * x * x + 0.0038 * x + 0.0107;
+
+        //y = 0.0002x4 - 0.0025x3 + 0.0097x2 - 0.0035x - 0.027
+
+        var y = 0.0002 * x * x * x * x - 0.0025 * x * x * x + 0.0097 * x * x - 0.0035 * x - 0.027
+
+        return y;
+    }
+
+    drag() {
+        //D = 0.5 * p * v^2 * A * cd
+        var v2 = this.v.dot(this.v);
+        var d = 0.5 * this.p * v2 * this.A * this.cd();
+        var v_norm = this.v.normalize();
+        var drag = v_norm.multiply(-d);
+        return drag;
+    }
+
+    front() {
+        var f = new Vector3(1, 0, 0);
+        f = f.rotationX(this.roll);
+        f = f.rotationZ(this.pitch);
+        f = f.rotationY(this.yaw);
+
+        return f;
+    }
+
+
+    thrust_check() {
+        if (this.current_thrust > this.max_thrust)
+            this.current_thrust = this.max_thrust;
+        else if (this.current_thrust < 0)
+            this.current_thrust = 0;
+    }
+    thrust() {
+        this.thrust_check(this.current_thrust);
+        var t = this.front().multiply(this.current_thrust);
+        return t;
+    }
+
+    
+
+    Tpitch () {
+        var v2 = this.v.dot(this.v);
+        var f=0.5*this.p*this.Apitch*this.clPitch*this.pitchAngle*v2;
+        var t=this.armPitch*f;
+        return t;
+    }
+
+    Tyaw () {
+        var v2 = this.v.dot(this.v);
+        var f=0.5*this.p*this.Ayaw*this.clyaw*this.yawAngle*v2;
+        var t=this.armyaw*f;
+        return t;
+    }
+
+    Troll () {
+        var v2 = this.v.dot(this.v);
+        var f=0.5*this.p*this.Aroll*this.clroll*this.rollAngle*v2;
+        var t=this.armroll*f;
+        return t;
+    }
+
+    TDyaw () {
+        /*var w2 = this.yawOmega*this.yawOmega;
+        var t=  -0.2*w2;
+        return t;*/
+
+        var v2 = this.v.dot(this.v);
+        var f=0.5*this.p*this.Ayaw*this.cdyaw*this.yawAngle*v2;
+        var t=this.armyaw*f;
+        return t;
+    }
+
+    TDroll () {
+       /* var w2 = this.rollOmega*(this.rollOmega);
+        var t=  -0.2*w2;
+        return t;*/
+
+        var v2 = this.v.dot(this.v);
+        var f=0.5*this.p*this.Aroll*this.cdroll*this.rollAngle*v2;
+        var t=this.armroll*f;
+        return t;
+    }
+
+    TDpitch () {
+       /* var w2 = this.pitchOmega*(this.pitchOmega);
+        var t=  -0.2*w2;
+        return t;*/
+
+        var v2 = this.v.dot(this.v);
+        var f=0.5*this.p*this.Apitch*this.cdPitch*this.pitchAngle*v2;
+        var t=this.armPitch*f;
+        return t;
+
+    }
+
+    updateYaw() {
+        var a=  (this.Tyaw()+this.TDyaw())    /this.yawI;
+        this.yawOmega=a*this.dt;
+        this.yaw=this.yawOmega*this.dt;
+    }
+
+    updateRoll() {
+        var a=  (this.Troll()+this.TDroll())     /this.rollI;
+        this.rollOmega=a*this.dt;
+        this.roll=this.rollOmega*this.dt;
+    }
+
+    updatePitch() {
+        var a=  (this.Tpitch()+this.TDpitch())     /this.pitchI;
+        this.pitchOmega=a*this.dt;
+        this.pitch=this.pitchOmega*this.dt;
+    }
+
+}
